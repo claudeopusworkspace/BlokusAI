@@ -209,6 +209,8 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--filters", type=int, default=64)
     parser.add_argument("--blocks", type=int, default=5)
+    parser.add_argument("--workers", type=int, default=8,
+                        help="Parallel self-play workers (0/1 = sequential)")
     parser.add_argument("--log-dir", default="logs")
     parser.add_argument("--checkpoint-dir", default="checkpoints")
     args = parser.parse_args()
@@ -223,6 +225,7 @@ def main() -> None:
         learning_rate=args.lr,
         num_filters=args.filters,
         num_res_blocks=args.blocks,
+        num_workers=args.workers,
         log_dir=args.log_dir,
         checkpoint_dir=args.checkpoint_dir,
     )

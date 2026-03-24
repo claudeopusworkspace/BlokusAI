@@ -23,6 +23,7 @@ class TrainingConfig:
 
     # ---- self-play ----
     games_per_iteration: int = 20
+    num_workers: int = 8           # parallel self-play processes (0/1 = sequential)
 
     # ---- training ----
     iterations: int = 50
