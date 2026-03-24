@@ -12,6 +12,7 @@ from typing import List, Tuple
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.amp import GradScaler, autocast
 from torch.optim import Adam
 
 from nn.encoding import ACTION_SPACE_SIZE, encode_policy
@@ -75,12 +76,15 @@ def train_epoch(
     config: TrainingConfig,
     iteration: int,
     logger=None,
+    scaler: GradScaler | None = None,
 ) -> Tuple[float, float]:
     """Train one epoch over the replay buffer.
 
-    Returns ``(avg_policy_loss, avg_value_loss)``.
+    When *scaler* is provided, uses mixed-precision (FP16) for ~2× faster
+    training on CUDA.  Returns ``(avg_policy_loss, avg_value_loss)``.
     """
     device = next(network.parameters()).device
+    use_amp = scaler is not None and device.type == "cuda"
     network.train()
 
     indices = list(range(len(buffer.buffer)))
@@ -98,23 +102,28 @@ def train_epoch(
         batch = [buffer.buffer[i] for i in batch_idx]
         states, policy_targets, masks, value_targets = _collate(batch, device)
 
-        # Forward
-        policy_logits, value_pred = network(states)
+        with autocast("cuda", enabled=use_amp):
+            # Forward
+            policy_logits, value_pred = network(states)
 
-        # --- policy loss: cross-entropy with MCTS target distribution ---
-        # Mask illegal actions before log-softmax
-        masked_logits = policy_logits + (masks - 1.0) * 1e9
-        log_probs = F.log_softmax(masked_logits, dim=1)
-        policy_loss = -(policy_targets * log_probs).sum(dim=1).mean()
+            # --- policy loss: cross-entropy with MCTS target distribution ---
+            masked_logits = policy_logits + (masks - 1.0) * 1e9
+            log_probs = F.log_softmax(masked_logits, dim=1)
+            policy_loss = -(policy_targets * log_probs).sum(dim=1).mean()
 
-        # --- value loss: MSE ---
-        value_loss = F.mse_loss(value_pred, value_targets)
+            # --- value loss: MSE ---
+            value_loss = F.mse_loss(value_pred, value_targets)
 
-        loss = policy_loss + value_loss
+            loss = policy_loss + value_loss
 
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
 
         pl = policy_loss.item()
         vl = value_loss.item()

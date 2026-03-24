@@ -26,7 +26,7 @@ class TrainingConfig:
     # ---- training ----
     iterations: int = 50
     epochs_per_iteration: int = 5
-    batch_size: int = 64
+    batch_size: int = 128
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
     replay_buffer_size: int = 50_000

@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 import torch
+from torch.amp import GradScaler
 from torch.optim import Adam
 
 from blokus.board import NUM_PLAYERS
@@ -76,8 +77,12 @@ def run_training(config: TrainingConfig | None = None) -> None:
     if config is None:
         config = TrainingConfig()
 
-    device = torch.device("cpu")
-    print(f"Device: {device}\n")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
+    if device.type == "cuda":
+        print(f"  GPU: {torch.cuda.get_device_name(0)}")
+        print(f"  VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    print()
 
     # --- set up ---
     network = BlokusNet(
@@ -95,6 +100,7 @@ def run_training(config: TrainingConfig | None = None) -> None:
         lr=config.learning_rate,
         weight_decay=config.weight_decay,
     )
+    scaler = GradScaler("cuda") if device.type == "cuda" else None
     buffer = ReplayBuffer(config.replay_buffer_size)
     logger = TrainingLogger(config.log_dir)
 
@@ -127,6 +133,7 @@ def run_training(config: TrainingConfig | None = None) -> None:
         for epoch in range(config.epochs_per_iteration):
             pl, vl = train_epoch(
                 network, optimizer, buffer, config, iteration, logger,
+                scaler=scaler,
             )
             epoch_policy_losses.append(pl)
             epoch_value_losses.append(vl)
