@@ -16,6 +16,7 @@ import numpy as np
 from blokus.board import Move, NUM_PLAYERS
 from blokus.game import Game
 from blokus.pieces import PIECES
+from nn.encoding import encode_action
 
 # Blokus score range (for normalization to [0, 1])
 _MIN_SCORE = -89
@@ -162,6 +163,36 @@ class MCTS:
             ) if root.children else 0.0,
         }
         return move, stats
+
+    def search_for_training(
+        self,
+        game: Game,
+        temperature: float = 1.0,
+    ) -> Tuple[Move, Dict[int, float]]:
+        """Run MCTS and return ``(move, {action_idx: probability})``.
+
+        Same tree search as :meth:`search`, but returns the visit-count
+        policy in the format expected by :class:`TrainingExample`.
+        """
+        root = MCTSNode(
+            parent=None, move=None,
+            player=game.current_player,
+            is_terminal=game.game_over,
+        )
+        root.untried_moves = list(game.get_legal_moves())
+
+        for _ in range(self.num_simulations):
+            self._simulate(root, game)
+
+        move, probs = self._select_move(root, temperature)
+
+        # Convert to {action_index: probability} dict
+        action_probs: Dict[int, float] = {}
+        moves_list = list(root.children.keys())
+        for m, p in zip(moves_list, probs):
+            action_probs[encode_action(m)] = float(p)
+
+        return move, action_probs
 
     def get_move_probabilities(
         self,

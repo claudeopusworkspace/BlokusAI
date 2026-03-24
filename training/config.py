@@ -23,7 +23,7 @@ class TrainingConfig:
 
     # ---- self-play ----
     games_per_iteration: int = 20
-    num_workers: int = 8           # parallel self-play processes (0/1 = sequential)
+    num_workers: int = 12          # parallel self-play processes (0/1 = sequential)
 
     # ---- training ----
     iterations: int = 50
@@ -37,6 +37,11 @@ class TrainingConfig:
     eval_games: int = 20
     eval_interval: int = 5        # evaluate every N iterations
     eval_mcts_sims: int = 50      # sims for NN player during eval
+
+    # ---- warm-start (rollout-MCTS bootstrap) ----
+    warmstart_games: int = 0        # 0 = skip; >0 = pre-train on this many games
+    warmstart_simulations: int = 200
+    warmstart_epochs: int = 10
 
     # ---- paths ----
     log_dir: str = "logs"

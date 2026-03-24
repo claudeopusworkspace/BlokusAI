@@ -26,6 +26,7 @@ from .config import TrainingConfig
 from .logger import TrainingLogger
 from .self_play import run_self_play
 from .trainer import ReplayBuffer, train_epoch
+from .warmstart import run_warmstart
 
 
 # ------------------------------------------------------------------ #
@@ -106,6 +107,51 @@ def run_training(config: TrainingConfig | None = None) -> None:
 
     ckpt_dir = Path(config.checkpoint_dir)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- warm-start (optional) ---
+    if config.warmstart_games > 0:
+        print(f"{'='*60}")
+        print(f"  Warm-start: {config.warmstart_games} rollout-MCTS games "
+              f"({config.warmstart_simulations} sims/move)")
+        print(f"{'='*60}\n")
+
+        t0 = time.perf_counter()
+        ws_examples = run_warmstart(config, logger)
+        ws_time = time.perf_counter() - t0
+        buffer.extend(ws_examples)
+        print(
+            f"\n    → {len(ws_examples)} examples "
+            f"(buffer: {len(buffer)})  ({ws_time:.1f}s)"
+        )
+
+        print("\n  [warm-start training]")
+        for epoch in range(config.warmstart_epochs):
+            pl, vl = train_epoch(
+                network, optimizer, buffer, config,
+                iteration=0, logger=logger, scaler=scaler,
+            )
+            print(f"    epoch {epoch+1}/{config.warmstart_epochs}  "
+                  f"policy={pl:.4f}  value={vl:.4f}")
+
+        # Evaluate the warm-started network
+        print("\n  [warm-start evaluation vs random]")
+        wins, avg_score = evaluate_vs_random(network, config)
+        eval_wr = wins / config.eval_games
+        logger.log_evaluation(
+            iteration=0, opponent="random",
+            games=config.eval_games, wins=wins, avg_score=avg_score,
+        )
+        print(f"    wins={wins}/{config.eval_games} ({eval_wr:.0%})  "
+              f"avg_score={avg_score:.1f}")
+
+        ckpt_path = ckpt_dir / "model_warmstart.pt"
+        torch.save({
+            "iteration": 0,
+            "model_state_dict": network.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "config": config,
+        }, ckpt_path)
+        print(f"\n  checkpoint → {ckpt_path}\n")
 
     # --- training loop ---
     for iteration in range(1, config.iterations + 1):
@@ -209,8 +255,14 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--filters", type=int, default=64)
     parser.add_argument("--blocks", type=int, default=5)
-    parser.add_argument("--workers", type=int, default=8,
+    parser.add_argument("--workers", type=int, default=12,
                         help="Parallel self-play workers (0/1 = sequential)")
+    parser.add_argument("--warmstart-games", type=int, default=0,
+                        help="Rollout-MCTS games for warm-start (0 = skip)")
+    parser.add_argument("--warmstart-sims", type=int, default=200,
+                        help="MCTS sims per move during warm-start")
+    parser.add_argument("--warmstart-epochs", type=int, default=10,
+                        help="Training epochs on warm-start data")
     parser.add_argument("--log-dir", default="logs")
     parser.add_argument("--checkpoint-dir", default="checkpoints")
     args = parser.parse_args()
@@ -226,6 +278,9 @@ def main() -> None:
         num_filters=args.filters,
         num_res_blocks=args.blocks,
         num_workers=args.workers,
+        warmstart_games=args.warmstart_games,
+        warmstart_simulations=args.warmstart_sims,
+        warmstart_epochs=args.warmstart_epochs,
         log_dir=args.log_dir,
         checkpoint_dir=args.checkpoint_dir,
     )
