@@ -18,7 +18,8 @@ class TrainingConfig:
     c_puct: float = 1.5
     dirichlet_alpha: float = 0.3
     dirichlet_epsilon: float = 0.25
-    temp_threshold: int = 10      # moves 1–N use τ=1; after that τ→0
+    temp_threshold: int = 15      # moves 1–N use τ=1
+    temp_final: float = 0.4       # τ after threshold (>0 prevents game collapse)
 
     # ---- self-play ----
     games_per_iteration: int = 20

@@ -40,7 +40,8 @@ def play_self_play_game(
 
     All four seats use the same network.  Temperature is 1.0 for the
     first ``config.temp_threshold`` moves (encouraging exploration), then
-    drops to 0.0 (greedy).
+    decays to ``config.temp_final`` (must be >0 to prevent identical games
+    when all seats share one network).
     """
     mcts = NeuralMCTS(
         network=network,
@@ -57,7 +58,10 @@ def play_self_play_game(
     while not game.game_over:
         state_planes = game.get_state_planes()
 
-        temperature = 1.0 if move_count < config.temp_threshold else 0.0
+        temperature = (
+            1.0 if move_count < config.temp_threshold
+            else config.temp_final
+        )
         move, action_probs = mcts.search(
             game, temperature=temperature, add_noise=True,
         )
