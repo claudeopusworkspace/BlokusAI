@@ -85,6 +85,21 @@ class Game:
         return sorted(range(NUM_PLAYERS), key=lambda p: scores[p], reverse=True)
 
     # ------------------------------------------------------------------ #
+    # Copy (for MCTS simulations)
+    # ------------------------------------------------------------------ #
+
+    def copy(self) -> Game:
+        """Deep-copy the game state. Move history is shared (copy-on-write)."""
+        new = Game.__new__(Game)
+        new.board = self.board.copy()
+        new.current_player = self.current_player
+        new.game_over = self.game_over
+        new.move_history = list(self.move_history)
+        new.last_piece = list(self.last_piece)
+        new._legal_moves = None
+        return new
+
+    # ------------------------------------------------------------------ #
     # State for neural network input
     # ------------------------------------------------------------------ #
 
